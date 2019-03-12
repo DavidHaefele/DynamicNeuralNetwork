@@ -220,7 +220,7 @@ void backPropagate()
             Layers[i-1].errors[j] = 0.0;
             for(int k = 0; k < numRightNodes; k++)
             {
-                    Layers[i-1].errors[j] += Layers[i-1].weights[k * Layers[i].nodes.size() + j] * Layers[i].deltas[k];
+                    Layers[i-1].errors[j] += Layers[i-1].weights[k * numRightNodes + j] * Layers[i].deltas[k];
             }
             Layers[i-1].deltas[j] = Layers[i-1].errors[j] * sigmoid_prime(Layers[i-1].nodes[j]);
         }
