@@ -308,7 +308,7 @@ int main(int argc, char* argv[])
 {
     if(argc < 3)
     {
-        cout << "usage: ./nn [train_data.csv] [number of neurons in layer 1] [number of neurons in layer 2] ..." << endl;
+        cout << "usage: ./DynamicNeuralNetwork [train_data.csv] [number of neurons in layer 1] [number of neurons in layer 2] ..." << endl;
         return -1;
     }
 
