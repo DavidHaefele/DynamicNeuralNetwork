@@ -1,9 +1,10 @@
 #include <iostream>
 #include <cmath>
 #include <vector>
+#include <sstream>
 using namespace std;
 
-#define EPOCHS 1000
+#define EPOCHS 1500
 #define LEARNINGRATE 0.1
 
 int correct = 0;
@@ -42,7 +43,7 @@ struct Layer
         }
     }
 
-    void setWeights(int numWeights)
+    void initWeights(int numWeights)
     {
         srand(time(NULL));
         for(int i = 0; i < numWeights; i++)
@@ -104,7 +105,7 @@ int countFeatures(FILE *ptr)
     return numberOfFeatures;
 }
 
-Data readData(const char* filename)
+Data readData(const char* filename, bool isTrainData)
 {
     FILE *infile = fopen(filename, "r");
     int numLines = countLines(infile);
@@ -112,18 +113,18 @@ Data readData(const char* filename)
     fseek(infile, 0, SEEK_SET);
     Data data(numLines, numFeatures);
     char chr;
-    string feature;
+    string feature = "";
     int lineCount = 0;
     int featureCount = 0;
 
-    while(fread(&chr, sizeof(chr), 1, infile)){
+    while(fread(&chr, sizeof(chr), 1, infile))
+    {
         if(chr != ',' && chr != '\n')
             feature += chr;
 
         else
         {
-            const char* c = feature.c_str();
-            data.samples[lineCount][featureCount++] = atof(c);
+            data.samples[lineCount][featureCount++] = atof(feature.c_str());
             feature = "";
         }
 
@@ -136,37 +137,120 @@ Data readData(const char* filename)
     fclose(infile);
 
     //adjusting labels to start from 0
-    for(int i = 0; i < numLines; i++)
-        data.samples[i][data.samples[i].size()-1] -= 1;
+    if(isTrainData)
+        for(int i = 0; i < numLines; i++)
+            data.samples[i][data.samples[i].size()-1] -= 1;
 
     return data;
 }
 
-void normalize(Data data)
+void writeModel()
+{
+    cout << "saving trained model" << endl;
+    string bufferStr = "";
+    int numLayers = Layers.size() - 1;
+    int numWeights, numBiases;
+    for(int i = 0; i < numLayers; i++)
+    {
+        numBiases = Layers[i].biases.size();
+        numWeights = Layers[i].weights.size();
+
+        bufferStr += to_string(numBiases);
+        for(int j = 0; j < numBiases; j++)
+            bufferStr += ',' + to_string(Layers[i].biases[j]);
+
+        bufferStr += '\n' + to_string(numWeights);
+        for(int j = 0; j < numWeights; j++)
+            bufferStr += ',' + to_string(Layers[i].weights[j]);
+
+        bufferStr += '\n';
+    }
+    bufferStr += to_string(Layers[numLayers].nodes.size()) + '\n';
+
+    FILE* outfile = fopen("model.trd", "w");
+    fwrite(bufferStr.c_str(), bufferStr.length(), 1, outfile);
+    fclose(outfile);
+}
+
+void readModel()
+{
+    FILE *infile = fopen("model.trd", "r");
+    bool first = true;
+    int rowCounter = 1;
+    int layerCounter = -1;
+    int biasCounter = 0;
+    int weightCounter = 0;
+    char chr;
+    string value = "";
+
+    while(fread(&chr, sizeof(chr), 1, infile))
+    {
+        if(chr != ',' && chr != '\n')
+            value += chr;
+
+        else
+        {
+            if(rowCounter % 2 != 0)
+            {
+                if(first)
+                {
+                    Layers.push_back(Layer(atoi(value.c_str())));
+                    layerCounter++;
+                    first = false;
+                }
+
+                else
+                    Layers[layerCounter].biases[biasCounter++] = atof(value.c_str());
+            }
+
+            else if(rowCounter % 2 == 0)
+            {
+                if(first)
+                {
+                    Layers[layerCounter].initWeights(atoi(value.c_str()));
+                    first = false;
+                }
+
+                else
+                    Layers[layerCounter].weights[weightCounter++] = atof(value.c_str());
+            }
+
+            if(chr == '\n')
+            {
+                rowCounter++;
+                first = true;
+                biasCounter = weightCounter = 0;
+            }
+            value = "";
+        }
+    }
+}
+
+void normalize(Data data, bool isTrainData)
 {
     //turns every feature into a value between 0 and 1
-    int numFeatures = data.samples[0].size();
+    int numFeatures = (isTrainData) ? data.samples[0].size() - 1 : data.samples[0].size();
     int numSamples = data.samples.size();
     double maxValue = data.samples[0][0];
 
     for(int i = 0; i < numSamples; i++)
-        for(int j = 0; j < numFeatures - 1; j++)
+        for(int j = 0; j < numFeatures; j++)
             if(data.samples[i][j] > maxValue)
                 maxValue = data.samples[i][j];
 
     for(int i = 0; i < numSamples; i++)
-        for(int j = 0; j < numFeatures - 1; j++)
+        for(int j = 0; j < numFeatures; j++)
             data.samples[i][j] /= maxValue;
 }
 
-int feedForward(Data data, int currentSample)
+int feedForward(Data data, int currentSample, bool isTrainData)
 {
     //returns index of maximal output value
     //initalize input layer
     int numInputNodes = Layers[0].nodes.size();
-    int numFeatures = data.samples[0].size();
+    int numFeatures = (isTrainData) ? data.samples[0].size() - 1 : data.samples[0].size();
     for(int i = 0; i < numInputNodes; i++)
-        for(int j = 0; j < numFeatures - 1; j++)
+        for(int j = 0; j < numFeatures; j++)
             Layers[0].nodes[j] = data.samples[currentSample][j];
 
     int numLeftNodes, numRightNodes;
@@ -191,8 +275,9 @@ int feedForward(Data data, int currentSample)
     }
 
     int prediction = getMaxIndexOutput();
-    if(prediction == data.samples[currentSample][numFeatures - 1])
-        correct++;
+
+        if(prediction == data.samples[currentSample][numFeatures])
+            correct++;
 
     return prediction;
 }
@@ -277,7 +362,7 @@ void train(Data data)
             for (int i = 0; i < numOutputNodes; i++)
                 Layers[numLayers].targets[i] = ((int)data.samples[sample][label] == i) ? 1 : 0;
 
-            feedForward(data, sample);
+            feedForward(data, sample, true);
 
             //compute cost/error in current epoch
             for(int i = 0; i < numOutputNodes; i++)
@@ -301,27 +386,48 @@ void initLayers(int numNodes[], int numLayers)
         Layers.push_back(Layer(numNodes[i]));
 
     for(vector<Layer>::size_type i = 0; i != numLayers - 1; i++)
-        Layers[i].setWeights(Layers[i].nodes.size() * Layers[i+1].nodes.size());
+        Layers[i].initWeights(Layers[i].nodes.size() * Layers[i+1].nodes.size());
 }
 
 int main(int argc, char* argv[])
 {
-    if(argc < 3)
+    if(argc < 2)
     {
-        cout << "usage: ./DynamicNeuralNetwork [train_data.csv] [number of neurons in layer 1] [number of neurons in layer 2] ..." << endl;
+        cout << "usage: ./DynamicNeuralNetwork --train [train_data.csv] [number of neurons in layer 1] [number of neurons in layer 2] ..." << endl
+        << "       ./DynamicNeuralNetwork --predict [test_data.csv]" << endl;
         return -1;
     }
 
-    else
+    else if(argv[1] == string("--train"))
     {
-        int numNodes[argc - 2];
-        for(int i = 2; i < argc; i++)
-            numNodes[i-2] = atoi(argv[i]);
+        int numNodes[argc - 3];
+        for(int i = 3; i < argc; i++)
+            numNodes[i-3] = atoi(argv[i]);
 
-        Data data = readData(argv[1]);
-        normalize(data);
-        initLayers(numNodes, argc - 2);
+        Data data = readData(argv[2], true);
+        normalize(data, true);
+        initLayers(numNodes, argc - 3);
         train(data);
+        writeModel();
+    }
+
+    else if(argv[1] == string("--predict"))
+    {
+        readModel();
+        Data data = readData(argv[2], false);
+        normalize(data, false);
+
+        int numSamples = data.samples.size();
+        for(int sample = 0; sample < numSamples; sample++)
+        {
+            //reset node values
+            int numLayers = Layers.size();
+            for(int i = 0; i < numLayers; i++)
+                fill(Layers[i].nodes.begin(), Layers[i].nodes.end(), 0.0);
+
+            cout << "prediction = " << feedForward(data, sample, false) + 1 << endl;
+        }
+
     }
 
     return 0;
